@@ -10,7 +10,7 @@ titanicClean <- titanic %>%
   mutate(embarked = sub("^$", "S", titanic$embarked)) %>%
 
   # replace NA ages with the mean
-  replace_na(list(age = round(mean(titanic$age, na.rm = TRUE, digits = 3)))) %>%
+  replace_na(list(age = mean(titanic$age, na.rm = TRUE))) %>%
 
   # replace empty values with NA
   mutate(boat = sub("^$", "NA", titanic$boat)) %>%
