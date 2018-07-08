@@ -1,0 +1,43 @@
+---
+title: "Data Wrangling"
+author: "Abhishek Dendukuri"
+date: "7/7/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(car)
+library(ggplot2)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+First we set the working directory and read in the information from our properties file into a dataframe. This spreadsheet proves to be massive in size so the data frame generation tends to take a few minutes before everything is properly setup
+``` {r}
+setwd("/Users/JARVIS/RStudio/Capstone")
+df <- read.csv("properties_2017.csv")
+properties <- tbl_df(df)
+```
+
+Now that everything is set up we can see that the table has generated and there are more than two million rows worth of values
+``` {r}
+str(properties)
+```
+
+## Missing Percentage Plot
+
+In order to understand which information to remove, it is best to display what factors are missing the highest amount of values. From here we can create a cutoff that would represent our data in a tidier fashion
+
+```{r fig1, fig.height=10}
+missing_values <- properties %>% summarize_all(funs(sum(is.na(.)/n())))
+missing_values <- gather(missing_values, key="feature", value="missing_pct")
+missing_values %>% 
+  ggplot(aes(x=reorder(feature,-missing_pct),y=missing_pct)) +
+  geom_bar(stat="identity",fill="red")+
+  coord_flip()+theme_bw()
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
