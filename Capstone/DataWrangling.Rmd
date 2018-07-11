@@ -40,4 +40,14 @@ missing_values %>%
   coord_flip()+theme_bw()
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+As we talked about earlier, there are some factors that merited a second look because they were littered with empty data points. As this chart reveals, there are multiple factors that are missing more than 90% of the data points considering the number of 'parcels' that were initially given. 
+
+Using this information we can now limit our data to the most consistently available factors using the following chunk of code:
+
+``` {r}
+percentMiss <- sapply(properties, function(x) {sum(is.na(x)) / length(x)})
+removeMiss <- which(percentMiss > 0.035)
+properties <- subset(properties, select=-removeMiss)
+
+head(properties)
+```
