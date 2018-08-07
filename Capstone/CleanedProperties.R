@@ -1,11 +1,19 @@
 library(dplyr)
 library(tidyr)
-library(car)
 library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(stringr)
+library(mice)
+# Set local working directory
+setwd("/Users/JARVIS/RStudio/Capstone")
 
 # Read in the data and convert it into a dataframe
 df <- read.csv("properties_2017.csv")
 properties <- tbl_df(df)
+
+df2 <- read.csv("train_2017.csv")
+train <- tbl_df(df2)
 
 # Rename the columns for easier viewing
 properties <- properties %>% rename(
@@ -68,23 +76,58 @@ properties <- properties %>% rename(
     tax_delinquency_year = taxdelinquencyyear,
     census_tract_and_block = censustractandblock
 )
-  
+
+train <- train %>% rename(
+  parcel_id = parcelid,
+  date = transactiondate
+)
+
+
+prop.train.join <- merge(properties, train, by="parcel_id")
+nrow(properties)
+nrow(train)
+nrow(prop.train.join)
+
+# Remove categorical features with more than 50 levels (required for random forest)
+prop.train.join <- prop.train.join %>% 
+  select(-county_land_use_code, -land_zone_desc, -date)
+
 # Find all the missing values and display the percent of values each column (representing a factor)
 # is missing
-missing_values <- properties %>% summarize_all(funs(sum(is.na(.)/n())))
+missing_values <- prop.train.join %>% summarize_all(funs(sum(is.na(.)/n())))
 missing_values <- gather(missing_values, key="feature", value="missing_pct")
 missing_values %>% 
-  ggplot(aes(x=reorder(feature,-missing_pct),y=missing_pct)) +
-  geom_bar(stat="identity",fill="red")+
-  coord_flip()+theme_bw()
+  ggplot(aes(x = reorder(feature, -missing_pct), y = missing_pct)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  coord_flip() + 
+  theme_bw()
+
 
 # Remove the columns that are missing more than 37.5% of its values
-percentMiss <- sapply(properties, function(x) {sum(is.na(x)) / length(x)})
-removeMiss <- which(percentMiss > 0.375)
-properties <- subset(properties, select=-removeMiss)
+percentMiss <- sapply(prop.train.join, function(x) {sum(is.na(x)) / length(x)})
+removeMiss <- which(percentMiss > 0.333)
+prop.train.join <- subset(prop.train.join, select=-removeMiss)
 
 # Omit any remaining rows that have an NA value
-properties <- na.omit(properties)
+prop.train.join <- na.omit(prop.train.join)
+
+prop.train.join %>%
+  select(struct_tax_value_dollars, land_tax_value_dollars, total_tax_value_dollars) %>%
+  head()
+
+# CorrPlot
+tmp <- prop.train.join %>% 
+  select(-assessment_year, -fireplace_exists, -tax_delinquency_flag, -has_hot_tub)
+corrplot(cor(tmp, use="complete.obs"), type="lower")
+
+#write.csv(prop.train.join, "properties_2017_clean.csv")
 
 
-write.csv(properties, "properties_2017_clean.csv")
+
+#imputeVals <- mice(prop.train.join, m = 1, maxIt = 3, method = "cart")
+#prop.train.impute <- tbl_df(imputeVals)
+#write.csv(prop.train.impute, "properties_2017_imputed.csv")
+
+
+
+

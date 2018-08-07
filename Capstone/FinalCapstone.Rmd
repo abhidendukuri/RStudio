@@ -1,0 +1,331 @@
+---
+title: "Final Capstone"
+author: "Abhishek Dendukuri"
+date: "7/28/2018"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyr)
+library(car)
+library(ggplot2)
+library(corrplot)
+library(knitr)
+library(kableExtra)
+library(leaflet)
+library(stringr)
+```
+
+# I. Introduction
+Housing prices have long been dictated and settled by real estate agents as their background knowledge about properties reliably led to sales. But as technology evolved and as new data was found, it was only time before companies like Zillow attacked the online housing market to track property prices for prospective homeowners.
+
+The Zestimate model that Zillow developed computes the estimated market value of a home using a proprietary formula. Using certain factors and environmental variables, it generates a comparative market analysis - or CMA - that can determine a valuation similar to one given by a real estate agent.
+
+## The Problem
+
+Currently we have no way of assessing whether or not Zestimate is the most reliable way to predict home prices. But there are not a lot of companies that have had the resources or time to tackle this as long as Zillow has, so it is perhaps the only way we can get a good idea of a property's value whether or not it's correct.
+
+What I'd like to investigate is if using basic machine learning methods can lay a foundation for estimating the price of a home. I believe that the methods I utilize are going to be very inaccurate but I would like to understand if using the entire breadth of factors provided by Zillow or only a subset of said factors will provide a better estimate of the home prices. 
+
+The point of this investigation is to comprehend what exactly holds other companies back from creating an effective solution and revealing what can be added or removed to provide a more effective analysis.
+
+# II. Cleaning the Dataset
+
+One of the benefits of having a dataset that Zillow provides is the incredible breadth of factors as well as the vast number of properties that the Zestmiate analyzes. It is important to have a number of data points in order to create a much more comprehensive formula that can utilize all this information to create a better model. Further analysis reveals that the entire dataset provided only supplies housing data for properties in the Los Angeles area. This is really helpful because we can visualize how the real estate market is for only one small area of the map - anything larger would cause the number of properties to explode, making it harder to organize the data and thus making it more challenging to divise a relatively reliable model.
+
+However the dataset is not without its drawbacks. Namely, the breadth of factors comes into question to a point where some of the factors seem unnecessary to include because they are missing several data points. This will be explored to a greater extent as we clean the data. As mentioned earlier, the data is only available for the Los Angeles area, and while it is helpful that all the data is localized in one region, this can be seen as a drawback because as far as our analysis goes, we will not be able to compare how well the formula applies to properties in other regions.
+
+### Setup
+
+First we set the working directory and read in the information from our properties file into a dataframe. The properties file contains over two million data points, each populated with its own unique set of feature data. The train spreadsheet is much smaller in size since it only includes a small subset of the properties found in the properties file, but it does contain logerror information for these selected properties. This spreadsheet is also read into a dataframe.
+```{r}
+setwd("/Users/JARVIS/RStudio/Capstone")
+
+df <- read.csv("properties_2017.csv")
+properties <- tbl_df(df)
+
+
+df2 <- read.csv("train_2017.csv")
+train <- tbl_df(df2)
+```
+
+```{r include = FALSE}
+properties <- properties %>% rename(
+    parcel_id = parcelid,
+    ac_type_id = airconditioningtypeid,
+    arch_style_type_id = architecturalstyletypeid,
+    basement_sqft = basementsqft,
+    bath_count = bathroomcnt,
+    bed_count = bedroomcnt,
+    build_quality_type_id = buildingqualitytypeid,
+    build_class_type_id = buildingclasstypeid,
+    calc_bath_and_bed = calculatedbathnbr,
+    deck_type_id = decktypeid,
+    finished_floor_1_sqft = finishedfloor1squarefeet,
+    calc_finished_sqft = calculatedfinishedsquarefeet,
+    finished_living = finishedsquarefeet12,
+    finished_perimeter_living = finishedsquarefeet13,
+    finished_total_area = finishedsquarefeet15,
+    finished_living_size = finishedsquarefeet50,
+    base_area = finishedsquarefeet6,
+    fips = fips,
+    fireplace_count = fireplacecnt,
+    full_bath_count = fullbathcnt,
+    garage_car_count = garagecarcnt,
+    garage_sqft = garagetotalsqft,
+    has_hot_tub = hashottuborspa,
+    heat_system_type_id = heatingorsystemtypeid,
+    latitude = latitude,
+    longitude = longitude,
+    lot_size = lotsizesquarefeet,
+    pool_count = poolcnt,
+    pool_size = poolsizesum,
+    spa_or_tub = pooltypeid10,
+    pool_no_tub = pooltypeid2,
+    pool_and_tub = pooltypeid7,
+    county_land_use_code = propertycountylandusecode,
+    land_type_id = propertylandusetypeid,
+    land_zone_desc = propertyzoningdesc,
+    raw_census_tract_and_block = rawcensustractandblock,
+    region_id_city = regionidcity,
+    region_id_county = regionidcounty,
+    region_id_neighborhood = regionidneighborhood,
+    region_id_zip = regionidzip,
+    room_count = roomcnt,
+    floor_type_id = storytypeid,
+    three_quarter_bath = threequarterbathnbr,
+    construction_material_type_id = typeconstructiontypeid,
+    unit_count = unitcnt,
+    patio_in_yard = yardbuildingsqft17,
+    shed_in_yard = yardbuildingsqft26,
+    year_built = yearbuilt,
+    num_stories = numberofstories,
+    fireplace_exists = fireplaceflag,
+    struct_tax_value_dollars = structuretaxvaluedollarcnt,
+    total_tax_value_dollars = taxvaluedollarcnt,
+    assessment_year = assessmentyear,
+    land_tax_value_dollars = landtaxvaluedollarcnt,
+    tax_amount = taxamount,
+    tax_delinquency_flag = taxdelinquencyflag,
+    tax_delinquency_year = taxdelinquencyyear,
+    census_tract_and_block = censustractandblock
+)
+
+train <- train %>% rename(
+  parcel_id = parcelid,
+  date = transactiondate
+)
+```
+
+Here we create a new dataframe that merges the previous two. As discussed, the train dataset only contains a subset of the factors contained in the much larger properties dataset. In order to streamline the information available, we can call the merge() function to perform an inner join, and maintain all the properties that contain the additional data found in the train dataset. 
+```{r}
+prop.train.join <- merge(properties, train, by="parcel_id")
+nrow(properties)
+nrow(prop.train.join)
+```
+
+The reason for removing so many datapoints is to account for the inclusion of logerror in the train dataset. Having logerror available proves how well Zestimate predicts the property prices and if we look at the chart of absolute logerror below, we can see that the data that was kept for further analysis showed remarkable precision to the actual price of the properties. This is important because when the machine learning models get created, the accuracy of the generated models can confidently be held against the results of the Zestimate.
+```{r}
+train %>% 
+  ggplot(aes(x = abs(logerror))) + 
+  geom_histogram(bins = 1000, fill="blue") +
+  theme_bw() + theme(axis.title = element_text(size = 12), axis.text = element_text(size = 10)) +
+  ylab("Count") + 
+  coord_cartesian(x = c(0, 0.5), y = c(0, 10000))
+```
+
+### Cleaning
+
+If we take a look at the structure of the merged dataframe we can see a couple of interesting developments pop up:
+```{r}
+str(prop.train.join)
+```
+
+<break>
+The first is that each feature is given a data type, whether it is _int_, _num_, or _Factor_. In order to create a working machine learning model, it is vital to focus on _int_ and _num_ - in other words, continuous variables. Any feature labeled _Factor_ is considered categorical because it could have a wide range of levels. As shown above, there are three features - `county_land_use_code`, `land_zone_desc`, and `date` - that contain well over 200 levels, whereas the remaining three features have two levels. It is safe to presume that the categorical features `county_land_use_code` and `land_zone_desc` can be removed, since they have a wide ranging span of possibilities and could hinder the analysis:
+```{r}
+prop.train.join <- prop.train.join %>% 
+  select(-county_land_use_code, -land_zone_desc, -date)
+```
+
+The second interesting development is that there are still several features populated with 'NA' values. Since the analysis is going to dive into the functionality of each feature when it comes to predicting a housing price, it is imperative to have as many data points as possible in order to contribute to a better machine learning model. We can either handle this by imputing data (replacing NA with an estimate) into rows that are missing values or we can negate the features that are missing a certain threshold of information.
+
+### Missing Percentage Plot
+
+**if you dont use mice** Due to the vast nature of the dataset, using an imputation algorithm is not very efficient because even with a small number of iterations through the data, the time it takes to finish this algorithm is very lengthy. If the rows that contain 'NA' values were omitted, there would only be around 2000 observations deleted from a dataset contained over 77000.
+**if you do use mice** The interesting thing, however, is that both can be implemented by first negating any features that are missing a significant number of values and then imputing the remaining data. 
+
+But to understand which information can be removed, it is best to display what factors are missing the highest amount of values. From here we can create a cutoff that would represent our data in a tidier fashion.
+```{r echo = FALSE, fig1, fig.height=10}
+missing_values <- prop.train.join %>% summarize_all(funs(sum(is.na(.)/n())))
+missing_values <- gather(missing_values, key = "feature", value = "missing_pct")
+missing_values %>% 
+  ggplot(aes(x = reorder(feature, -missing_pct),y = missing_pct)) +
+  geom_bar(stat = "identity", fill = "red") +
+  coord_flip() + xlab("feature") +
+  theme_bw()
+```
+
+**if we use mice**
+In order to get a strong prediction for the imputed values, we should keep the features that have at least two-thirds of their data points. 
+
+As this chart reveals, there are multiple factors that are missing more than 33% of the data points considering the number of 'parcels' that were initially given. Using this information we can now limit our data to the most consistently available factors using the following chunk of code:
+```{r}
+# Create array that stores the missing percentage of each feature
+percentMiss <- sapply(prop.train.join, function(x) {sum(is.na(x)) / length(x)})
+
+# Remove values that have a percent miss rate of greater than 3.5%
+removeMiss <- which(percentMiss > 0.333)
+prop.train.join <- subset(prop.train.join, select=-removeMiss)
+
+
+# Next omit the remainder of the NA values that persisted in the remaining columns
+prop.train.join <- na.omit(prop.train.join)
+```
+
+
+```{r}
+# Output
+head(prop.train.join)
+```
+
+# III. Exploring the Data
+
+After perusing the generated data sheet created from prop.train.join, I've deduced that `total_tax_value_dollars` is the total price of the property and is comprised of two parts: `struct_tax_value_dollars` and `land_tax_value_dollars`.
+
+```{r}
+prop.train.join %>%
+  select(struct_tax_value_dollars, land_tax_value_dollars, total_tax_value_dollars) %>%
+  head()
+```
+
+Knowing this information, we can create a correlation plot that directly shows how each variable correlates to each other.
+
+```{r echo = FALSE}
+# CorrPlot
+tmp <- prop.train.join %>% 
+  select(-assessment_year, -fireplace_exists, -tax_delinquency_flag, -has_hot_tub)
+corrplot(cor(tmp, use="complete.obs"), type="lower")
+```
+
+Though this initial correlation plot is not very elegant, it has however revealed that there are certain sets of variables that reveal a relatively strong correlation with `total_tax_value_dollars`. We can narrow the features down to a much smaller correlation plot.
+
+```{r  echo = FALSE}
+# Create an array of features that are missing than 33.3% of their values
+missLimit <- filter(missing_values, missing_pct < 0.333)
+
+# Pipe the desired keywords into a new array
+# in this case we're looking for anything with 'bath', 'bed', or 'sqft'
+keys <- missLimit$feature[str_detect(missLimit$feature, 'bath|bed|sqft')]
+
+# Create a temporary dataframe that takes the prop.train.join keys and then create the corrplot
+tmp <- prop.train.join %>% select(one_of(keys, "total_tax_value_dollars"))
+corrplot(cor(tmp, use="complete.obs"), type="lower")
+```
+
+There are relatively strong correlations with `total_tax_value_dollars` among the following variables
+<ol>
+  <li>`bed_count`</li>
+  <li>`bath_count`</li>
+  <li>`calc_bath_and_bed`</li>
+  <li>`calc_finished_sqft`</li>
+  <li>`full_bath_count`</li>
+</ol>
+Since both `calc_bath_and_bed` and `full_bath_count` have a 1:1 correlation to `bath_count`, both features can safely be ruled out, leaving `bed_count`, `bath_count`, and `calc_finished_sqft` as the most significantly correlated variables. Using a map, we can visualize these variables to show their distribution over the Los Angeles area.
+
+```{r echo = FALSE}
+lat <- range(prop.train.join$latitude / 1e06, na.rm = TRUE)
+long <- range(prop.train.join$longitude / 1e06, na.rm = TRUE)
+
+tmp <- prop.train.join %>% 
+  sample_n(2000) %>% 
+  mutate(lat = latitude / 1e6, long = longitude / 1e6) %>% 
+  select(parcel_id, lat, long, bed_count) %>%
+  
+  # looking at the bedroom distribution, most of the values above 6 can be considered outliers  
+  filter(bed_count <= 6)
+
+qpal <- colorNumeric("Blues", tmp$bed_count, 1:6)
+leaflet(tmp) %>% 
+  addTiles() %>% 
+  fitBounds(long[1],lat[1],long[2],lat[2]) %>% 
+  addCircleMarkers(stroke=FALSE, color = ~qpal(bed_count)) %>% 
+  addLegend("bottomright", pal = qpal, values = ~bed_count, title = "num of beds", opacity = 1)
+```
+
+```{r echo = FALSE}
+tmp <- prop.train.join %>% 
+  sample_n(2000) %>% 
+  mutate(lat = latitude / 1e6, long = longitude / 1e6) %>% 
+  select(parcel_id, lat, long, bath_count) %>%
+  
+  # looking at the bath distribution, most of the values above 4 can be considered outliers  
+  filter(bath_count <= 4)
+
+qpal <- colorNumeric("Reds", tmp$bath_count, 1:4)
+leaflet(tmp) %>% 
+  addTiles() %>% 
+  fitBounds(long[1], lat[1], long[2], lat[2]) %>% 
+  addCircleMarkers(stroke = FALSE, color = ~qpal(bath_count)) %>% 
+  addLegend("bottomright", pal = qpal, values = ~bath_count, title = "num of baths", opacity = 1)
+```
+
+```{r echo = FALSE}
+tmp <- prop.train.join %>% 
+  sample_n(2000) %>% 
+  mutate(lat = latitude / 1e6, long = longitude / 1e6) %>% 
+  select(parcel_id, lat, long, calc_finished_sqft) %>%
+  
+  # looking at the square footage distribution, most of the values above 5000 can be considered outliers  
+  filter(calc_finished_sqft <= 5000)
+
+qpal <- colorNumeric("Oranges", tmp$calc_finished_sqft, 1:5000)
+leaflet(tmp) %>% 
+  addTiles() %>% 
+  fitBounds(long[1], lat[1], long[2], lat[2]) %>% 
+  addCircleMarkers(stroke = FALSE, color = ~qpal(calc_finished_sqft)) %>% 
+  addLegend("bottomright", pal = qpal, values = ~calc_finished_sqft, title = "square footage", opacity = 1,
+            labFormat = labelFormat())
+```
+
+These maps all have something in common - they illustrate that the bed count, bath count, and square footage are much lower in the center of Los Angeles than they are in the surrounding areas. This is significant because it reveals a commonality among these features that further aids the argument that these variables are correlated. 
+
+Knowing this information, one can question why factors such as <i>city, zipcode,</i> and <i>yearbuilt</i> showed little to no correlation with <i>total_tax_value_dollars</i> in the first correlation plot. This is strange because these seem to be variables that need to be considered in the price along with bath and bed count when thought out logically. We can further investigate the impact of these other features by applying machine learning models. Using the method random forest, we can create subsets of desired parameters and understand the mean squared error that results from these models. This will then help analyze which subset of features leads to the best predictor of price.
+
+# IV. Machine Learning
+
+
+Since the data...tbc
+
+```{r}
+# Zip Code Distribution Histogram
+minZip <- min(prop.train.join$region_id_zip, na.rm = TRUE)
+maxZip <- max(prop.train.join$region_id_zip, na.rm = TRUE)
+zipDist <- hist(prop.train.join$region_id_zip, 
+                main =  "Zip Code Distribution", 
+                breaks = "FD", 
+                xlab = "Zip Code",
+                xlim = range(minZip, 97344))
+summary(zipDist)
+```
+
+```{r}
+# Build Year Distribution Histogram
+minYr <- min(prop.train.join$year_built, na.rm = TRUE)
+maxYr <- max(prop.train.join$year_built, na.rm = TRUE)
+yrDist <- hist(prop.train.join$year_built, 
+                main =  "Build Year Distribution", 
+                breaks = "FD", 
+                xlab = "Year Built",
+                xlim = range(minYr, maxYr))
+summary(yrDist)
+
+```
+
+
+
+
+
