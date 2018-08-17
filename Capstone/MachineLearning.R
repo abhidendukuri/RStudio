@@ -12,7 +12,7 @@ prop.train.join <- tbl_df(df)
 
 ## Basic Random Forest Application
 
-# Use set.seed for reproducability
+# Set and random number as a seed for reproducability
 set.seed(123)
 
 ## Prepare the training set ##
@@ -30,6 +30,7 @@ pt_trainSet <- training(ptSplit)
 pt_testSet <- testing(ptSplit)
 
 ## Random Forests for each feature set ##
+
 # Start the random forest generation using ALL the features
 RFM1 <- randomForest(
   formula = total_tax_value_dollars ~ .,
@@ -42,15 +43,17 @@ plot(RFM1)
 
 # Find the number of trees with the lowest mse
 minTree <- which.min(RFM1$mse)
-# Output: 121
+
 
 # Using this info, derive the rmse
 sqrt(RFM1$mse[minTree])
-# Output: 158598.7
+
+
+#######################################
 
 # Start the random forest generation using the following features
 RFM2 <- randomForest(
-  formula = total_tax_value_dollars ~ bath_count + bed_count + calc_finished_sqft,
+  formula = total_tax_value_dollars ~ bath_count + bed_count + calc_finished_sqft + tax_amount,
   data = pt_trainSet
 )
 
@@ -60,9 +63,32 @@ plot(RFM2)
 
 # Find the number of trees with the lowest mse
 minTree <- which.min(RFM2$mse)
-# Output: 229
+minTree
+
 
 # Using this info, derive the rmse
 sqrt(RFM2$mse[minTree])
-# Output: 502320.4
 
+
+#######################################
+
+varImpPlot(RFM1)
+
+# Start the random forest generation using the following features
+RFM3 <- randomForest(
+  formula = total_tax_value_dollars ~ tax_amount + land_tax_value_dollars + 
+    struct_tax_value_dollars + calc_finished_sqft + calc_bath_and_bed + 
+    bath_count + full_bath_count,
+  data = pt_trainSet
+)
+
+# Plot the random forest generation
+RFM3
+plot(RFM3)
+
+# Find the number of trees with the lowest mse
+minTree <- which.min(RFM3$mse)
+minTree
+
+# Using this info, derive the rmse
+sqrt(RFM3$mse[minTree])

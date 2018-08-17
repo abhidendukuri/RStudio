@@ -4,7 +4,7 @@ library(ggplot2)
 library(knitr)
 library(kableExtra)
 library(stringr)
-
+library(leaflet)
 
 # Set local working directory
 setwd("/Users/JARVIS/RStudio/Capstone")
@@ -12,7 +12,6 @@ setwd("/Users/JARVIS/RStudio/Capstone")
 df <- read.csv("properties_2017_clean.csv")
 prop.train.join <- tbl_df(df)
 
-##### FOR NOW THIS IS EXTRA BUT USEFUL STUFF #####
 
 ############# Map of Properties #############
 lat <- range(prop.train.join$latitude / 1e06, na.rm = TRUE)
@@ -116,35 +115,29 @@ leaflet(tmp) %>%
             labFormat = labelFormat())
 
 
-############## Histograms #############
-# Zip Code Distribution Histogram
-minZip <- min(prop.train.join$region_id_zip, na.rm = TRUE)
-maxZip <- max(prop.train.join$region_id_zip, na.rm = TRUE)
-zipDist <- hist(prop.train.join$region_id_zip, 
-                main =  "Zip Code Distribution", 
-                breaks = "FD", 
-                xlab = "Zip Code",
-                xlim = range(minZip, 97344))
-summary(zipDist)
-
-# Build Year Distribution Histogram
-minYr <- min(prop.train.join$year_built, na.rm = TRUE)
-maxYr <- max(prop.train.join$year_built, na.rm = TRUE)
-yrDist <- hist(prop.train.join$year_built, 
-               main =  "Build Year Distribution", 
-               breaks = 7, 
-               xlab = "Year Built",
-               xlim = range(minYr, maxYr))
-summary(yrDist)
-#######################################
-
 ############## CorrPlots ##############
-# CorrPlot
-missLimit <- filter(missing_values, missing_pct < 0.75)
-vars <- removeMiss$feature[str_detect(removeMiss$feature, 'bath|bed')]
 
-tmp <- prop.train.join %>% select(one_of(vars, "total_tax_value_dollars"))
+## CorrPlot With ALL Features ##
 
+# Create a temporary dataframe that removes the categorical variables
+tmp <- prop.train.join %>% 
+  select(-assessment_year, -fireplace_exists, -tax_delinquency_flag, -has_hot_tub)
+
+# Create the correlation plot using this temporary dataframe
+corrplot(cor(tmp, use="complete.obs"), type="lower")
+
+
+## CorrPlot With Selected Features ##
+
+# Create an array of features that are missing than 37.5% of their values
+missLimit <- filter(missing_values, missing_pct < 0.375)
+
+# Pipe the desired keywords into a new array
+# in this case we're looking for anything with 'bath', 'bed', 'sqft', and 'tax_amount'
+keys <- missLimit$feature[str_detect(missLimit$feature, 'bath|bed|sqft|tax_amount')]
+
+# Create a temporary dataframe that takes the prop.train.join keys and then create the corrplot
+tmp <- prop.train.join %>% select(one_of(keys, "total_tax_value_dollars"))
 corrplot(cor(tmp, use="complete.obs"), type="lower")
 
 

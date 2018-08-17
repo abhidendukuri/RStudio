@@ -111,22 +111,8 @@ prop.train.join <- subset(prop.train.join, select=-removeMiss)
 # Omit any remaining rows that have an NA value
 prop.train.join <- na.omit(prop.train.join)
 
-prop.train.join %>%
-  select(struct_tax_value_dollars, land_tax_value_dollars, total_tax_value_dollars) %>%
-  head()
-
-# CorrPlot
-tmp <- prop.train.join %>% 
-  select(-assessment_year, -fireplace_exists, -tax_delinquency_flag, -has_hot_tub)
-corrplot(cor(tmp, use="complete.obs"), type="lower")
-
-#write.csv(prop.train.join, "properties_2017_clean.csv")
-
-
-
-#imputeVals <- mice(prop.train.join, m = 1, maxIt = 3, method = "cart")
-#prop.train.impute <- tbl_df(imputeVals)
-#write.csv(prop.train.impute, "properties_2017_imputed.csv")
+# Export the cleaned data frame to a new csv file
+write.csv(prop.train.join, "properties_2017_clean.csv")
 
 
 
