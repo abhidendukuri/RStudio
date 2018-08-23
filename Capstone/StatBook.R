@@ -12,6 +12,48 @@ setwd("/Users/JARVIS/RStudio/Capstone")
 df <- read.csv("properties_2017_clean.csv")
 prop.train.join <- tbl_df(df)
 
+############# Histograms #############
+
+## Histogram for Bedroom Distribution ##
+
+# Find the min and max values in the feature set
+minBed <- min(prop.train.join$bed_count, na.rm = TRUE)
+maxBed <- max(prop.train.join$bed_count, na.rm = TRUE)
+
+# Create the histogram
+bedDist <- hist(prop.train.join$bed_count, 
+                main =  "Bedrooms Distribution", 
+                xlab = "Number of Beds",
+                breaks = 10,
+                xlim = range(minBed, maxBed))
+
+## Histogram for Bathroom Distribution ##
+
+# Find the min and max values in the feature set
+minBath <- min(prop.train.join$bath_count, na.rm = TRUE)
+maxBath <- max(prop.train.join$bath_count, na.rm = TRUE)
+
+# Create the histogram
+bathDist <- hist(prop.train.join$bath_count, 
+                main =  "Bathrooms Distribution", 
+                xlab = "Number of Baths",
+                xlim = range(minBath, maxBath))
+
+## Histogram for Square Footage Distribution ##
+
+# Find the min and max values in the feature set
+minSqft <- min(prop.train.join$calc_finished_sqft, na.rm = TRUE)
+maxSqft <- max(prop.train.join$calc_finished_sqft, na.rm = TRUE)
+
+# Create the histogram
+sqftDist <- hist(prop.train.join$calc_finished_sqft, 
+                main =  "Square Feet Distribution", 
+                xlab = "Square Footage",
+                breaks = "FD",
+                xlim = range(minSqft, 5000))
+
+
+######################################
 
 ############# Map of Properties #############
 lat <- range(prop.train.join$latitude / 1e06, na.rm = TRUE)
@@ -140,6 +182,8 @@ keys <- missLimit$feature[str_detect(missLimit$feature, 'bath|bed|sqft|tax_amoun
 tmp <- prop.train.join %>% select(one_of(keys, "total_tax_value_dollars"))
 corrplot(cor(tmp, use="complete.obs"), type="lower")
 
+
+#######################################
 
 # For some of the parcels (properties) there is transaction information, and one of the most revealing values it has
 # it the logerror which effectively calculates how far off the Zestimate was from the actual Sale Price.

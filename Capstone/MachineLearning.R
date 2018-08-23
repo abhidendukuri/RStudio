@@ -1,3 +1,6 @@
+library(dplyr)
+library(tidyr)
+
 library(randomForest)
 library(rsample)
 library(ranger)
@@ -10,7 +13,7 @@ setwd("/Users/JARVIS/RStudio/Capstone")
 df <- read.csv("properties_2017_clean.csv")
 prop.train.join <- tbl_df(df)
 
-## Basic Random Forest Application
+## Random Forest Models
 
 # Set and random number as a seed for reproducability
 set.seed(123)
@@ -19,10 +22,7 @@ set.seed(123)
 # after several trials, 10000 rows provided a relatively quick output time relative to the
 # volume
 pt.MLSet <- prop.train.join %>% 
-  sample_n(10000) %>%
-  
-  # Remove the categorical factors
-  select(-county_land_use_code, -date, -assessment_year)
+  sample_n(10000) 
 
 # Create the training and testing sets
 ptSplit <- initial_split(pt.MLSet, prop = .7)
@@ -92,3 +92,9 @@ minTree
 
 # Using this info, derive the rmse
 sqrt(RFM3$mse[minTree])
+
+pred <- predict(RFM3, pt_trainSet)
+rfError <- pt_trainSet$total_tax_value_dollars - pred
+sqrt(mean(rfError^2))
+
+#######################################

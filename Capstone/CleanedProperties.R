@@ -103,14 +103,14 @@ missing_values %>%
   theme_bw()
 
 
-# Remove the columns that are missing more than 37.5% of its values
+# Remove the columns that are missing more than 12.5% of its values
 percentMiss <- sapply(prop.train.join, function(x) {sum(is.na(x)) / length(x)})
-removeMiss <- which(percentMiss > 0.333)
+removeMiss <- which(percentMiss > 0.125)
 prop.train.join <- subset(prop.train.join, select=-removeMiss)
 
 # Omit any remaining rows that have an NA value
 prop.train.join <- na.omit(prop.train.join)
-
+nrow(prop.train.join)
 # Export the cleaned data frame to a new csv file
 write.csv(prop.train.join, "properties_2017_clean.csv")
 

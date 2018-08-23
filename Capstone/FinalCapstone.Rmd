@@ -3,7 +3,8 @@ title: "Final Capstone"
 author: "Abhishek Dendukuri"
 date: "7/28/2018"
 output:
-  html_document: default
+  word_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -17,6 +18,9 @@ library(knitr)
 library(kableExtra)
 library(leaflet)
 library(stringr)
+library(randomForest)
+library(rsample)
+library(caret)
 ```
 
 # I. Introduction
@@ -24,19 +28,17 @@ Housing prices have long been dictated and settled by real estate agents as thei
 
 The Zestimate model that Zillow developed computes the estimated market value of a home using a proprietary formula. Using certain factors and environmental variables, it generates a comparative market analysis - or CMA - that can determine a valuation similar to one given by a real estate agent.
 
-## The Problem
-
 Currently we have no way of assessing whether or not Zestimate is the most reliable way to predict home prices. But there are not a lot of companies that have had the resources or time to tackle this as long as Zillow has, so it is perhaps the only way we can get a good idea of a property's value whether or not it's correct.
 
-What I'd like to investigate is if using basic machine learning methods can lay a foundation for estimating the price of a home. I believe that the methods I utilize are going to be very inaccurate but I would like to understand if using the entire breadth of factors provided by Zillow or only a subset of said factors will provide a better estimate of the home prices. 
+## The Problem
+
+What I'd like to investigate is if a subset of Zillow's provided features can lay a foundation for estimating the price of a home. I believe that through the random forest machine learning method, we can make a fair approximation. Though I do understand that this method will provide a significantly less accurate estimate with respect to Zestimate, I would like to understand if using the entire breadth of factors provided by Zillow or only a subset of said factors will provide a better estimate of the home prices. 
 
 The point of this investigation is to comprehend what exactly holds other companies back from creating an effective solution and revealing what can be added or removed to provide a more effective analysis.
 
 # II. Cleaning the Dataset
 
-One of the benefits of having a dataset that Zillow provides is the incredible breadth of factors as well as the vast number of properties that the Zestmiate analyzes. It is important to have a number of data points in order to create a much more comprehensive formula that can utilize all this information to create a better model. Further analysis reveals that the entire dataset provided only supplies housing data for properties in the Los Angeles area. This is really helpful because we can visualize how the real estate market is for only one small area of the map - anything larger would cause the number of properties to explode, making it harder to organize the data and thus making it more challenging to divise a relatively reliable model.
-
-However the dataset is not without its drawbacks. Namely, the breadth of factors comes into question to a point where some of the factors seem unnecessary to include because they are missing several data points. This will be explored to a greater extent as we clean the data. As mentioned earlier, the data is only available for the Los Angeles area, and while it is helpful that all the data is localized in one region, this can be seen as a drawback because as far as our analysis goes, we will not be able to compare how well the formula applies to properties in other regions.
+One of the benefits of having a dataset that Zillow provides is the incredible range of factors as well as the vast number of properties that the Zestmiate analyzes. It is important to have a number of data points in order to create a much more comprehensive formula that can utilize all this information to create a better model. Further analysis reveals that the entire dataset provided only supplies housing data for properties in the Los Angeles area. This is really helpful because we can visualize how the real estate market is for only one small area of the map - anything larger would cause the number of properties to explode, making it harder to organize the data and thus making it more challenging to divise a relatively reliable model.
 
 ### Setup
 
@@ -127,15 +129,7 @@ nrow(properties)
 nrow(prop.train.join)
 ```
 
-The reason for removing so many datapoints is to account for the inclusion of logerror in the train dataset. Having logerror available proves how well Zestimate predicts the property prices and if we look at the chart of absolute logerror below, we can see that the data that was kept for further analysis showed remarkable precision to the actual price of the properties. This is important because when the machine learning models get created, the accuracy of the generated models can confidently be held against the results of the Zestimate.
-```{r}
-train %>% 
-  ggplot(aes(x = abs(logerror))) + 
-  geom_histogram(bins = 1000, fill="blue") +
-  theme_bw() + theme(axis.title = element_text(size = 12), axis.text = element_text(size = 10)) +
-  ylab("Count") + 
-  coord_cartesian(x = c(0, 0.5), y = c(0, 10000))
-```
+The reason for removing over one million data points is because we have logerror information for the parcels specified in the train file which indicates how well the Zestimate predicted the price of the home. Considering that we have this information for about 77000 parcels, these become infinitely more valuable than the rest of the data because not only do we know that these values are relatively close to the actual price of the property, but also that the values that are not included could have values that may be skewed. Without logerror, we do not have sufficient evidence stating otherwise, so it is safer to remove these values.
 
 ### Cleaning
 
@@ -144,7 +138,6 @@ If we take a look at the structure of the merged dataframe we can see a couple o
 str(prop.train.join)
 ```
 
-<break>
 The first is that each feature is given a data type, whether it is _int_, _num_, or _Factor_. In order to create a working machine learning model, it is vital to focus on _int_ and _num_ - in other words, continuous variables. Any feature labeled _Factor_ is considered categorical because it could have a wide range of levels. As shown above, there are three features - `county_land_use_code`, `land_zone_desc`, and `date` - that contain well over 200 levels, whereas the remaining three features have two levels. It is safe to presume that the categorical features `county_land_use_code` and `land_zone_desc` can be removed, since they have a wide ranging span of possibilities and could hinder the analysis:
 ```{r}
 prop.train.join <- prop.train.join %>% 
@@ -155,8 +148,7 @@ The second interesting development is that there are still several features popu
 
 ### Missing Percentage Plot
 
-**if you dont use mice** Due to the vast nature of the dataset, using an imputation algorithm is not very efficient because even with a small number of iterations through the data, the time it takes to finish this algorithm is very lengthy. If the rows that contain 'NA' values were omitted, there would only be around 2000 observations deleted from a dataset contained over 77000.
-**if you do use mice** The interesting thing, however, is that both can be implemented by first negating any features that are missing a significant number of values and then imputing the remaining data. 
+Due to the vast nature of the dataset, using an imputation algorithm is not very efficient because even with a small number of iterations through the data, the time it takes to finish this algorithm is very lengthy. If the rows that contain 'NA' values were omitted, there would only be around 2000 observations deleted from a dataset contained over 77000, meaning we'd still have a significant enough sample size.
 
 But to understand which information can be removed, it is best to display what factors are missing the highest amount of values. From here we can create a cutoff that would represent our data in a tidier fashion.
 ```{r echo = FALSE, fig1, fig.height=10}
@@ -169,10 +161,7 @@ missing_values %>%
   theme_bw()
 ```
 
-**if we use mice**
-In order to get a strong prediction for the imputed values, we should keep the features that have at least two-thirds of their data points. 
-
-As this chart reveals, there are multiple factors that are missing more than 33% of the data points considering the number of 'parcels' that were initially given. Using this information we can now limit our data to the most consistently available factors using the following chunk of code:
+As this chart reveals, there are multiple factors that are missing more than 33% of the data points considering the number of parcels that were initially given. Using this information we can now limit our data to the most consistently available factors using the following chunk of code:
 ```{r}
 # Create array that stores the missing percentage of each feature
 percentMiss <- sapply(prop.train.join, function(x) {sum(is.na(x)) / length(x)})
@@ -184,10 +173,7 @@ prop.train.join <- subset(prop.train.join, select=-removeMiss)
 
 # Next omit the remainder of the NA values that persisted in the remaining columns
 prop.train.join <- na.omit(prop.train.join)
-```
 
-
-```{r}
 # Output
 head(prop.train.join)
 ```
@@ -219,113 +205,158 @@ missLimit <- filter(missing_values, missing_pct < 0.333)
 
 # Pipe the desired keywords into a new array
 # in this case we're looking for anything with 'bath', 'bed', or 'sqft'
-keys <- missLimit$feature[str_detect(missLimit$feature, 'bath|bed|sqft')]
+keys <- missLimit$feature[str_detect(missLimit$feature, 'bath|bed|sqft|tax_amount')]
 
 # Create a temporary dataframe that takes the prop.train.join keys and then create the corrplot
 tmp <- prop.train.join %>% select(one_of(keys, "total_tax_value_dollars"))
 corrplot(cor(tmp, use="complete.obs"), type="lower")
 ```
 
-There are relatively strong correlations with `total_tax_value_dollars` among the following variables
+There are relatively strong correlations with `total_tax_value_dollars` among the following variables:
 <ol>
   <li>`bed_count`</li>
   <li>`bath_count`</li>
   <li>`calc_bath_and_bed`</li>
   <li>`calc_finished_sqft`</li>
   <li>`full_bath_count`</li>
+  <li>`tax_amount`</li>
 </ol>
-Since both `calc_bath_and_bed` and `full_bath_count` have a 1:1 correlation to `bath_count`, both features can safely be ruled out, leaving `bed_count`, `bath_count`, and `calc_finished_sqft` as the most significantly correlated variables. Using a map, we can visualize these variables to show their distribution over the Los Angeles area.
+
+If we set aside `tax_amount` for the fact that it is not a visible feature like the others, we are essentially left with `bed_count`, `bath_count`, and `calc_finished_sqft`. We can understand the importance of these variables by looking into their distribution. `calc_bath_and_bed` and `full_bath_count` are important variables in their own right, but since they share a near 1:1 correlation with `bath_count`, their distribution plots will look relatively similar.
 
 ```{r echo = FALSE}
-lat <- range(prop.train.join$latitude / 1e06, na.rm = TRUE)
-long <- range(prop.train.join$longitude / 1e06, na.rm = TRUE)
 
-tmp <- prop.train.join %>% 
-  sample_n(2000) %>% 
-  mutate(lat = latitude / 1e6, long = longitude / 1e6) %>% 
-  select(parcel_id, lat, long, bed_count) %>%
-  
-  # looking at the bedroom distribution, most of the values above 6 can be considered outliers  
-  filter(bed_count <= 6)
+minBed <- min(prop.train.join$bed_count, na.rm = TRUE)
+maxBed <- max(prop.train.join$bed_count, na.rm = TRUE)
+bedDist <- hist(prop.train.join$bed_count, 
+                main =  "Bedrooms Distribution", 
+                xlab = "Number of Beds",
+                breaks = 10,
+                xlim = range(minBed, maxBed))
 
-qpal <- colorNumeric("Blues", tmp$bed_count, 1:6)
-leaflet(tmp) %>% 
-  addTiles() %>% 
-  fitBounds(long[1],lat[1],long[2],lat[2]) %>% 
-  addCircleMarkers(stroke=FALSE, color = ~qpal(bed_count)) %>% 
-  addLegend("bottomright", pal = qpal, values = ~bed_count, title = "num of beds", opacity = 1)
+minBath <- min(prop.train.join$bath_count, na.rm = TRUE)
+maxBath <- max(prop.train.join$bath_count, na.rm = TRUE)
+bathDist <- hist(prop.train.join$bath_count, 
+                main =  "Bathrooms Distribution", 
+                xlab = "Number of Baths",
+                xlim = range(minBath, maxBath))
+
+minSqft <- min(prop.train.join$calc_finished_sqft, na.rm = TRUE)
+maxSqft <- max(prop.train.join$calc_finished_sqft, na.rm = TRUE)
+sqftDist <- hist(prop.train.join$calc_finished_sqft, 
+                main =  "Square Feet Distribution", 
+                xlab = "Square Footage",
+                breaks = "FD",
+                xlim = range(minSqft, maxSqft))
+
 ```
 
-```{r echo = FALSE}
-tmp <- prop.train.join %>% 
-  sample_n(2000) %>% 
-  mutate(lat = latitude / 1e6, long = longitude / 1e6) %>% 
-  select(parcel_id, lat, long, bath_count) %>%
-  
-  # looking at the bath distribution, most of the values above 4 can be considered outliers  
-  filter(bath_count <= 4)
+Though histograms reveal the mode of the data, they can help decipher patterns. What's interesting about this data is that the highest frequency ranges for each of the features - 1-3 bedrooms, 1-2 bathrooms, 1000-3000 square feet - constitute the base of an average home. In Further Exploration we will revisit these three features and reveal what we can learn from this.
 
-qpal <- colorNumeric("Reds", tmp$bath_count, 1:4)
-leaflet(tmp) %>% 
-  addTiles() %>% 
-  fitBounds(long[1], lat[1], long[2], lat[2]) %>% 
-  addCircleMarkers(stroke = FALSE, color = ~qpal(bath_count)) %>% 
-  addLegend("bottomright", pal = qpal, values = ~bath_count, title = "num of baths", opacity = 1)
-```
-
-```{r echo = FALSE}
-tmp <- prop.train.join %>% 
-  sample_n(2000) %>% 
-  mutate(lat = latitude / 1e6, long = longitude / 1e6) %>% 
-  select(parcel_id, lat, long, calc_finished_sqft) %>%
-  
-  # looking at the square footage distribution, most of the values above 5000 can be considered outliers  
-  filter(calc_finished_sqft <= 5000)
-
-qpal <- colorNumeric("Oranges", tmp$calc_finished_sqft, 1:5000)
-leaflet(tmp) %>% 
-  addTiles() %>% 
-  fitBounds(long[1], lat[1], long[2], lat[2]) %>% 
-  addCircleMarkers(stroke = FALSE, color = ~qpal(calc_finished_sqft)) %>% 
-  addLegend("bottomright", pal = qpal, values = ~calc_finished_sqft, title = "square footage", opacity = 1,
-            labFormat = labelFormat())
-```
-
-These maps all have something in common - they illustrate that the bed count, bath count, and square footage are much lower in the center of Los Angeles than they are in the surrounding areas. This is significant because it reveals a commonality among these features that further aids the argument that these variables are correlated. 
-
-Knowing this information, one can question why factors such as <i>city, zipcode,</i> and <i>yearbuilt</i> showed little to no correlation with <i>total_tax_value_dollars</i> in the first correlation plot. This is strange because these seem to be variables that need to be considered in the price along with bath and bed count when thought out logically. We can further investigate the impact of these other features by applying machine learning models. Using the method random forest, we can create subsets of desired parameters and understand the mean squared error that results from these models. This will then help analyze which subset of features leads to the best predictor of price.
+We can investigate the impact of the rest of the features by applying machine learning models. Using the method random forest, we can create subsets of desired parameters and understand the mean squared error that results from these models. This will then help analyze which subset of features leads to the best predictor of price.
 
 # IV. Machine Learning
 
+First we need to set a seed that tells the system where to start for random number generation using the `set.seed()` function. This will be the basis for random number generation for the random forest models.
 
-Since the data...tbc
+Next we create the dataset `pt.MLSet` as a subset of `prop.train.join`. After multiple random forest generations using a different number of values from the `prop.train.join` dataset, I've concluded that 10,000 randomly selected property values can serve as a good sample size for the random forest to generate an analysis from - it provided a similar result to the same analysis done to all 75,180 values, but with much greater efficiency. We then remove the categorical variables in order to maintain a random forest made up of only continuous variables.
 
-```{r}
-# Zip Code Distribution Histogram
-minZip <- min(prop.train.join$region_id_zip, na.rm = TRUE)
-maxZip <- max(prop.train.join$region_id_zip, na.rm = TRUE)
-zipDist <- hist(prop.train.join$region_id_zip, 
-                main =  "Zip Code Distribution", 
-                breaks = "FD", 
-                xlab = "Zip Code",
-                xlim = range(minZip, 97344))
-summary(zipDist)
-```
+Finally, we create two separate datasets - train and test. 70% of the values in the initial dataset - named `pt.MLSet` here - will go to the train set which will be used for the random forest model and the remaining 30% will go to the test dataset which will be used to predict the final values.
 
 ```{r}
-# Build Year Distribution Histogram
-minYr <- min(prop.train.join$year_built, na.rm = TRUE)
-maxYr <- max(prop.train.join$year_built, na.rm = TRUE)
-yrDist <- hist(prop.train.join$year_built, 
-                main =  "Build Year Distribution", 
-                breaks = "FD", 
-                xlab = "Year Built",
-                xlim = range(minYr, maxYr))
-summary(yrDist)
+# Set and random number as a seed for reproducability
+set.seed(123)
 
+## Prepare the training set ##
+# after several trials, 10000 rows provided a relatively quick output time relative to the
+# volume
+pt.MLSet <- prop.train.join %>% 
+  sample_n(10000) %>%
+  
+  # Remove the categorical factors
+  select(-assessment_year)
+
+# Create the training and testing sets
+ptSplit <- initial_split(pt.MLSet, prop = .7)
+pt_trainSet <- training(ptSplit)
+pt_testSet <- testing(ptSplit)
 ```
 
+### Baseline Plot
+
+As a baseline, let's create a random forest using the entire set of features. From this information we can find the root mean squared error which indicates the predictive power of the algorithm on this data. For each of the cases listed below, root mean squared error represents the average error in the price in dollar amounts.
+
+```{r}
+# Start the random forest generation using ALL the features
+RFM1 <- randomForest(
+  formula = total_tax_value_dollars ~ .,
+  data = pt_trainSet
+)
+
+# Plot the random forest generation
+RFM1
+plot(RFM1)
+
+# Find the number of trees with the lowest mse
+minTree <- which.min(RFM1$mse)
+minTree
+
+# Using this info, derive the rmse
+sqrt(RFM1$mse[minTree])
+```
+
+As seen here, the curve of the error line experiences a sharp decline as the number of trees initially and plateauing around the \$200,000 mark. The root mean square error at the minTree value specified above reveals a value of \$185,123.7 which will be used as the benchmark for the next plot. The closer the values is to zero, the better.
 
 
+### Testing Plot
 
+The test random forest model we are going to try will be based off of a variable importance plot derived from `RMF1`. This variable importance plot will generate the significance of the remaining variables with respect to `total_tax_value_dollars`. We can use then use the highest values to derive which values to use for the final random forest model.
 
+```{r}
+varImpPlot(RFM1)
+
+# Start the random forest generation using the following features
+RFM2 <- randomForest(
+  formula = total_tax_value_dollars ~ tax_amount + land_tax_value_dollars + struct_tax_value_dollars + calc_finished_sqft + calc_bath_and_bed + bath_count + full_bath_count,
+  data = pt_trainSet
+)
+
+# Plot the random forest generation
+RFM2
+plot(RFM2)
+
+which.min(RFM2$mse)
+# Using this info, derive the rmse
+sqrt(RFM2$mse[which.min(RFM2$mse)])
+```
+
+As we can see here, the curve is not as fluid as the benchmark plot, showing a steep increase in error at around 10 trees, and then declining again from there with slight blips along the way. The lowest point in the plot is revealed to be at 48 trees for an error of \$194,982.9 - slightly higher than the benchmark. As this indicates, limiting the factors to those that the variable importance plot favor, led to fairly similar results which is important because this means that the variables that were not used in `RFM2` did not hold as much significance to determining the error.
+
+# V. Conclusion
+
+After examining the machine learning models, we can see that `RFM2` approximated the root mean square error of `RFM1` with only a subset of the features provided in `RFM1`. This is significant because it shows that not every variable considered in the Zestimate carries highly significant value when determining a price estimate. Logically, this makes sense because there features like square feet, bathrooms, and bedrooms are more readily available to consumers and as proven above, these are some of the variables with a stronger correlation to the price of the property. Therefore, utilizing only a subset of the features provided was enough to create a simple predictive model for determining price. 
+
+### Limitations
+
+Though this study provided a good basis of how well random forest fared via mean squared error, the limitations largely stemmed off of the fact that random forest generated too basic of a model for serious use. Obviously, Zillow's pricing algorithm is extremely refined and looking through the train datasets `logerror` values, we can visualize the remarkable accuracy of the algorithm. 
+
+```{r echo=FALSE}
+train %>% 
+  ggplot(aes(x = abs(logerror))) + 
+  geom_histogram(bins = 1000, fill="blue") +
+  theme_bw() + theme(axis.title = element_text(size = 12), axis.text = element_text(size = 10)) +
+  ylab("Count") + 
+  coord_cartesian(x = c(0, 0.5), y = c(0, 10000))
+```
+
+Another limitation was the volume of missing data in the properties dataset. Even though we narrowed down the features to the ones that had a significant amount of data, it is apparent that there are so many other features that go into the price. This information may not have been available, accounted for, or even simply, documented which severely limited the number of factors that mattered in the cleaned data and may have led to more significant results.
+
+### Further Exploration
+
+As we saw earlier,  `bed_count`, `bath_count`, and `calc_finished_sqft` are significantly correlated features with respect to `total_tax_value_dollars`. This is interesting because information about square feet, number of beds, and number of baths are highly transparent when it comes to looking at a home or an apartment. Using a map, we can visualize properties with these features to show their distribution over the Los Angeles area.
+
+Fascinatingly enough, all three of these graphs indicate that the properties with the lowest number of beds and baths, and with the lowest square footage can be found in the center of Los Angeles. Using this information we can further visualize other features and recognize patterns that can be applied to other cities.
+
+Though the initial properties dataset came with over two million properties, it only scratched the surface of what this information can visualize. As noted we were limited in looking at properties in Los Angeles, but what if we had the information to other major metropolitan cities or even the information to sparsely populated parts of the US. What it can be used to find and how it can affect the real estate industry is key to unlocking even more data that has not been explored. For example, the Zestimate does not take into account a neighborhood safety index or school district ranking. For some people, the house can be everything they want but if the house is in the middle of a shady neighborhood or if the surrounding schools for their children do not provide the best education, it will be for naught. 
+
+Beyond these two examples, there is still so much data left untapped or unaccounted for. The potential for technology to grow within the real estate industry remains promising and with so much more being discovered everyday, it will only be time before the online real estate market surpasses the everyday realtor. Whether it is for better or for worse, Zillow seems to have primed a revolution.
